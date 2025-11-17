@@ -1,6 +1,28 @@
 -- 0001_init.sql: Initial schema for CRM
--- Ensure objects are owned by the app user (matches startup.sh DB_USER)
+-- Ensures citext usage when available, with TEXT fallback via a domain type.
 SET ROLE appuser;
+
+-- Informational check for citext availability
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='citext') THEN
+    RAISE NOTICE 'citext not available, using TEXT fallback';
+  END IF;
+END
+$$;
+
+-- Create a domain ci_text that maps to citext when available otherwise text
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ci_text') THEN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname='citext') THEN
+      EXECUTE 'CREATE DOMAIN ci_text AS citext';
+    ELSE
+      EXECUTE 'CREATE DOMAIN ci_text AS text';
+    END IF;
+  END IF;
+END
+$$;
 
 BEGIN;
 
@@ -8,7 +30,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS users (
     id            BIGSERIAL PRIMARY KEY,
-    email         CITEXT UNIQUE NOT NULL,
+    email         ci_text UNIQUE NOT NULL,
     full_name     TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     is_active     BOOLEAN NOT NULL DEFAULT TRUE,
@@ -39,7 +61,7 @@ CREATE TABLE IF NOT EXISTS customers (
     id          BIGSERIAL PRIMARY KEY,
     external_id TEXT,
     name        TEXT NOT NULL,
-    email       CITEXT,
+    email       ci_text,
     phone       TEXT,
     address     TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -89,7 +111,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 COMMIT;
 
--- Helpful note: CITEXT requires extension; to avoid external dependencies you can remove CITEXT or ensure it's available.
--- If CITEXT extension is not available in your environment, run:
---   ALTER TABLE users ALTER COLUMN email TYPE TEXT;
---   ALTER TABLE customers ALTER COLUMN email TYPE TEXT;
+-- Note:
+-- - The ci_text domain ensures portability: it uses citext if available, otherwise text.
+-- - For environments without citext, case-insensitive uniqueness is enforced via functional indexes in 0002.

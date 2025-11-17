@@ -3,12 +3,32 @@ SET ROLE appuser;
 
 BEGIN;
 
--- Users
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email);
+-- Users: unique email - citext path uses direct unique; fallback uses functional unique on lower(email)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname='citext') THEN
+    -- citext ensures case-insensitive semantics
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)';
+  ELSE
+    -- fallback: enforce case-insensitive uniqueness via functional index
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_ci ON users (LOWER(email))';
+  END IF;
+END
+$$;
 
--- Customers
+-- Customers: email unique handling as above
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname='citext') THEN
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email ON customers (email)';
+  ELSE
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email_ci ON customers (LOWER(email))';
+  END IF;
+END
+$$;
+
+-- Customers - additional indexes
 CREATE INDEX IF NOT EXISTS idx_customers_name ON customers (name);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email ON customers (email);
 CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers (phone);
 
 -- Service Requests

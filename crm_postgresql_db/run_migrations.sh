@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Trap any error to surface which migration failed and avoid marking it as applied.
+trap 'echo "[migrate] ERROR: Migration ${CURRENT_MIGRATION:-unknown} failed. See psql output above. Exiting."; exit 1' ERR
+
 DB_NAME="myapp"
 DB_USER="appuser"
 DB_PASSWORD="dbuser123"
@@ -45,7 +48,7 @@ if [ ${#MIG_FILES[@]} -eq 0 ]; then
   exit 0
 fi
 
-# Apply each migration in order
+# Apply each migration in lexical order (ensures 0000_* runs before 0001_*)
 for file in $(printf "%s\n" "${MIG_FILES[@]}" | sort); do
   base=$(basename "${file}")
   checksum=$(md5sum "${file}" | awk '{print $1}')
@@ -71,7 +74,9 @@ for file in $(printf "%s\n" "${MIG_FILES[@]}" | sort); do
   fi
 
   echo "[migrate] Applying ${base} ..."
-  # Apply with ON_ERROR_STOP to stop at first failure
+  CURRENT_MIGRATION="${base}"
+
+  # Apply with ON_ERROR_STOP to stop at first failure; no tracking occurs unless success.
   sudo -u postgres ${PG_BIN}/psql -v ON_ERROR_STOP=1 -p ${DB_PORT} -d ${DB_NAME} -f "${file}"
 
   # Record successful application
@@ -79,6 +84,7 @@ for file in $(printf "%s\n" "${MIG_FILES[@]}" | sort); do
     "INSERT INTO app_migrations (filename, checksum) VALUES ('${base}', '${checksum}');"
 
   echo "[migrate] Applied ${base} successfully."
+  unset CURRENT_MIGRATION
 done
 
 echo "[migrate] All migrations processed."
