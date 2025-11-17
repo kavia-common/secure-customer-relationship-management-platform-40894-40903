@@ -30,7 +30,9 @@ if sudo -u postgres ${PG_BIN}/pg_isready -p ${DB_PORT} > /dev/null 2>&1; then
     fi
     
     echo ""
-    echo "Script stopped - server already running."
+    echo "Applying database migrations..."
+    bash "$(dirname "$0")/run_migrations.sh" || { echo "Migrations failed"; exit 1; }
+    echo "Migrations complete."
     exit 0
 fi
 
@@ -42,7 +44,9 @@ if pgrep -f "postgres.*-p ${DB_PORT}" > /dev/null 2>&1; then
     # Try to connect and verify the database exists
     if sudo -u postgres ${PG_BIN}/psql -p ${DB_PORT} -d ${DB_NAME} -c '\q' 2>/dev/null; then
         echo "Database ${DB_NAME} is accessible."
-        echo "Script stopped - server already running."
+        echo "Applying database migrations..."
+        bash "$(dirname "$0")/run_migrations.sh" || { echo "Migrations failed"; exit 1; }
+        echo "Migrations complete."
         exit 0
     fi
 fi
@@ -147,6 +151,10 @@ echo "Database: ${DB_NAME}"
 echo "User: ${DB_USER}"
 echo "Port: ${DB_PORT}"
 echo ""
+
+echo "Applying database migrations..."
+bash "$(dirname "$0")/run_migrations.sh" || { echo "Migrations failed"; exit 1; }
+echo "Migrations complete."
 
 echo "Environment variables saved to db_visualizer/postgres.env"
 echo "To use with Node.js viewer, run: source db_visualizer/postgres.env"
